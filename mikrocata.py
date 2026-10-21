@@ -7,6 +7,7 @@ import re
 import ipaddress
 from time import sleep
 from datetime import datetime as dt, timezone, timedelta
+import sys
 import pyinotify
 import json
 import librouteros
@@ -17,71 +18,57 @@ import requests
 VERSION = "4.0.0"
 
 # ------------------------------------------------------------------------------
-################# START EDIT SETTINGS
+# Settings are read from the environment. systemd loads them from
+# /etc/mikrocata/<interface>.env, see mikrocata.env.example for documentation.
 
-#Set Mikrotik login information
-USERNAME = "mikrocata2selks"
-PASSWORD = "password"
-ROUTER_IP = "192.168.0.1"
-TIMEOUT = "1d"
-USE_SSL = False  # Set to True to use SSL connection
-PORT = 8728  # Default port for non-SSL connection. Will use 8729 if USE_SSL is True
-BLOCK_LIST_NAME = "Suricata"
+def env_bool(name, default):
+    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
-#Set Telegram information
-enable_telegram = False
-TELEGRAM_TOKEN = "TOKEN"
-TELEGRAM_CHATID = "CHATID"
-TELEGRAM_HEADER = "\U0001F43F Suricata ALERT:"
-TELEGRAM_PROXY_ENABLED = True
-TELEGRAM_PROXY = {
-    "http":  "http://user:pass@domain:port",
-    "https": "http://user:pass@domain:port"
-}
+def env_list(name, default):
+    return tuple(item.strip() for item in os.environ.get(name, default).split(",") if item.strip())
 
-# You can add your WAN IP, so it doesn't get mistakenly blocked (don't leave empty string)
-WAN_IP = "yourpublicip"
-LOCAL_IP_PREFIX = "192.168.0.0/16"
-WHITELIST_IPS = (WAN_IP, LOCAL_IP_PREFIX, "127.0.0.1", "1.1.1.1", "8.8.8.8", "fe80:", "10.0.0.0/8", "172.16.0.0/12")
-COMMENT_TIME_FORMAT = "%-d %b %Y %H:%M:%S.%f"  # See datetime strftime formats.
+REQUIRED_SETTINGS = ("ROUTER_IP", "USERNAME", "PASSWORD")
 
-# Timezone offset for timestamps in notifications (in hours from UTC)
-# Examples: 0 for UTC, 3 for UTC+3 (Moscow), -5 for UTC-5 (EST), 1 for UTC+1 (CET)
-TIMEZONE_OFFSET = 0  # Set your timezone offset here
+USERNAME = os.environ.get("USERNAME", "")
+PASSWORD = os.environ.get("PASSWORD", "")
+ROUTER_IP = os.environ.get("ROUTER_IP", "")
+TIMEOUT = os.environ.get("TIMEOUT", "1d")
+USE_SSL = env_bool("USE_SSL", False)
+BLOCK_LIST_NAME = os.environ.get("BLOCK_LIST_NAME", "Suricata")
 
-ENABLE_IPV6 = False
+enable_telegram = env_bool("ENABLE_TELEGRAM", False)
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHATID = os.environ.get("TELEGRAM_CHATID", "")
+TELEGRAM_HEADER = os.environ.get("TELEGRAM_HEADER", "\U0001F43F Suricata ALERT:")
+TELEGRAM_PROXY_URL = os.environ.get("TELEGRAM_PROXY_URL", "")
 
-#Set comma separated value of suricata alerts severity which will be blocked in Mikrotik. All severity values are ("1","2","3")
-SEVERITY=("1","2")
+WHITELIST_IPS = env_list("WHITELIST_IPS", "127.0.0.1,1.1.1.1,8.8.8.8,fe80:,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+COMMENT_TIME_FORMAT = os.environ.get("COMMENT_TIME_FORMAT", "%-d %b %Y %H:%M:%S.%f")
+TIMEZONE_OFFSET = int(os.environ.get("TIMEZONE_OFFSET", "0"))
+ENABLE_IPV6 = env_bool("ENABLE_IPV6", False)
+SEVERITY = env_list("SEVERITY", "1,2")
+ALLOW_SELF_SIGNED_CERTS = env_bool("ALLOW_SELF_SIGNED_CERTS", False)
+DEBUG_MODE = env_bool("DEBUG_MODE", False)
 
-# Allow self-signed certificates
-# WARNING: These settings bypass certificate verification and should only be used
-# with self-signed certificates in trusted environments
-ALLOW_SELF_SIGNED_CERTS = False
-
-# Enable debug mode for verbose logging
-DEBUG_MODE = False
-
-################# END EDIT SETTINGS
 # ------------------------------------------------------------------------------
-LISTEN_INTERFACE=("tzsp0")
+# Set by the systemd unit from its instance name (mikrocata@tzsp0)
+LISTEN_INTERFACE = os.environ.get("MIKROCATA_INTERFACE", "tzsp0")
 
 # Suricata log file - Clean NDR default path
-NDR_SURICATA_LOG_PATH="/root/NDR/config/containers-data/suricata/logs/"
+NDR_SURICATA_LOG_PATH = os.environ.get("NDR_SURICATA_LOG_PATH", "/root/NDR/config/containers-data/suricata/logs/")
 FILEPATH = os.path.abspath(NDR_SURICATA_LOG_PATH + "eve.json")
 
 # Save Mikrotik address lists to a file and reload them on Mikrotik reboot.
-# You can add additional list(s), e.g. [BLOCK_LIST_NAME, "blocklist1", "list2"]
-SAVE_LISTS = [BLOCK_LIST_NAME]
+SAVE_LISTS = env_list("SAVE_LISTS", BLOCK_LIST_NAME)
 
 # (!) Make sure you have privileges (!)
-SAVE_LISTS_LOCATION = os.path.abspath("/var/lib/mikrocata/savelists-tzsp0.json")
-SAVE_LISTS_LOCATION_V6 = os.path.abspath("/var/lib/mikrocata/savelists-tzsp0_v6.json")
+SAVE_LISTS_LOCATION = os.path.abspath(f"/var/lib/mikrocata/savelists-{LISTEN_INTERFACE}.json")
+SAVE_LISTS_LOCATION_V6 = os.path.abspath(f"/var/lib/mikrocata/savelists-{LISTEN_INTERFACE}_v6.json")
 # Location for Mikrotik's uptime. (needed for re-adding lists after reboot)
-UPTIME_BOOKMARK = os.path.abspath("/var/lib/mikrocata/uptime-tzsp0.bookmark")
+UPTIME_BOOKMARK = os.path.abspath(f"/var/lib/mikrocata/uptime-{LISTEN_INTERFACE}.bookmark")
 
 # Ignored rules file location - check ignore.conf for syntax.
-IGNORE_LIST_LOCATION = os.path.abspath("/var/lib/mikrocata/ignore-tzsp0.conf")
+IGNORE_LIST_LOCATION = os.path.abspath(f"/var/lib/mikrocata/ignore-{LISTEN_INTERFACE}.conf")
 
 # Add all alerts from alerts.json on start?
 # Setting this to True will start reading alerts.json from beginning
@@ -634,7 +621,7 @@ def sendTelegram(message):
     if enable_telegram:
         telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={TELEGRAM_CHATID}&text={TELEGRAM_HEADER}{message}&disable_web_page_preview=true&parse_mode=html"
         try:
-            proxies = TELEGRAM_PROXY if TELEGRAM_PROXY_ENABLED else None
+            proxies = {"http": TELEGRAM_PROXY_URL, "https": TELEGRAM_PROXY_URL} if TELEGRAM_PROXY_URL else None
             response = requests.get(telegram_url, proxies=proxies, timeout=10)
             debug_log(f"Telegram response: {response.json()}")
             return response.status_code == 200
@@ -647,6 +634,12 @@ def sendTelegram(message):
 def main():
 
     print(f"[Mikrocata] Starting Mikrocata v{VERSION}")
+
+    missing = [name for name in REQUIRED_SETTINGS if not os.environ.get(name)]
+    if missing:
+        print(f"[Mikrocata] Missing settings: {', '.join(missing)}. Edit /etc/mikrocata/{LISTEN_INTERFACE}.env and restart.")
+        # 78 = EX_CONFIG, the unit does not restart on it
+        sys.exit(78)
 
     if DEBUG_MODE:
         print("[Mikrocata] Starting in DEBUG mode - verbose logging enabled")
