@@ -1,3 +1,41 @@
+# Changelog - Unreleased
+
+## BREAKING CHANGES
+
+Configuration and code are now separate, which makes in-place updates possible. Run `git pull && ./easyinstall.sh update` to upgrade, existing v4 installations are migrated automatically.
+
+### Major Changes
+
+*   **Configuration file:** Settings moved from the script into `/etc/mikrocata/<interface>.env` (see `mikrocata.env.example`). It is never overwritten by updates.
+*   **Update path:** New `./easyinstall.sh update` (also in the menu). It installs code and units, migrates v4 settings and restarts the services. `install` and `uninstall` are available as arguments too.
+*   **Template units:** `mikrocataTZSP0.service` and `TZSPreplay37008@tzsp0.service` are replaced by `mikrocata@tzsp0.service` and `tzsp-replay@tzsp0.service`. The installer no longer rewrites files with `sed`.
+*   **Code location:** The script is installed once to `/usr/local/lib/mikrocata/mikrocata.py` instead of one copy per device.
+*   **Debian 13:** Debian 12 and 13 are supported.
+
+### Changed Settings
+
+*   `WAN_IP` and `LOCAL_IP_PREFIX` are merged into `WHITELIST_IPS` (comma separated).
+*   `TELEGRAM_PROXY_ENABLED` and `TELEGRAM_PROXY` are replaced by `TELEGRAM_PROXY_URL` (empty = no proxy).
+*   `enable_telegram` is now `ENABLE_TELEGRAM`.
+*   `PORT` is removed. It was never used: the API port is 8729 with `USE_SSL=true` and 8728 without.
+
+### Bug Fixes
+
+*   Fixed a syntax error in `sendTelegram()` that prevented the script from starting since the Telegram header/proxy change.
+*   The Telegram proxy was enabled by default with a placeholder address.
+*   The installer modified `mikrocata.py` in the git checkout.
+*   The interface filter used a substring match (`tzsp1` matched `tzsp10`).
+*   A missing uptime bookmark file no longer breaks saving the address lists.
+
+### Technical Improvements
+
+*   `tcpreplay` is installed from the Debian repositories instead of being built from source.
+*   `tzsp2pcap` is pinned to a fixed commit and built only once.
+*   Dropped the `python3-ujson` and `python3-pip` dependencies.
+*   The service stops with a clear message when the Mikrotik settings are missing instead of restarting in a loop.
+
+---
+
 # Changelog - v4.0.0 (November 2025)
 
 ## BREAKING CHANGES
