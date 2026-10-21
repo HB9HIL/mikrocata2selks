@@ -263,7 +263,7 @@ def add_to_tik(alerts):
             continue
 
         # Check interface
-        if str(event["in_iface"]) not in LISTEN_INTERFACE:
+        if str(event["in_iface"]) != LISTEN_INTERFACE:
             debug_log(f"Skipping alert from interface {event['in_iface']}")
             continue
 
