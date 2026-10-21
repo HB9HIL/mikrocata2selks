@@ -484,11 +484,11 @@ def check_tik_uptime(resources):
     if total_seconds < 900:
         total_seconds = 900
 
-    with open(UPTIME_BOOKMARK, "r") as f:
-        try:
+    try:
+        with open(UPTIME_BOOKMARK, "r") as f:
             bookmark = int(f.read())
-        except ValueError:
-            bookmark = 0
+    except (FileNotFoundError, ValueError):
+        bookmark = 0
 
     with open(UPTIME_BOOKMARK, "w+") as f:
         f.write(str(total_seconds))
