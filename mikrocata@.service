@@ -1,0 +1,19 @@
+[Unit]
+Description=Suricata to Mikrotik API in Python (%i)
+After=network.target network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/mikrocata/%i.env
+Environment=MIKROCATA_INTERFACE=%i
+ExecStart=/usr/bin/python3 /usr/local/lib/mikrocata/mikrocata.py
+Restart=always
+RestartSec=3
+# Missing settings, wait for the admin instead of restarting
+RestartPreventExitStatus=78
+StateDirectory=mikrocata
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
