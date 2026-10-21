@@ -8,7 +8,6 @@ import ipaddress
 from time import sleep
 from datetime import datetime as dt, timezone, timedelta
 import pyinotify
-import ujson
 import json
 import librouteros
 from librouteros import connect
@@ -578,14 +577,14 @@ def save_lists(address_list,is_v6=False):
         for save_list in SAVE_LISTS:
             for row in address_list.select(_list, _address, _timeout,
                                            _comment).where(_list == save_list):
-                f.write(ujson.dumps(row) + "\n")
+                f.write(json.dumps(row) + "\n")
 
 def add_saved_lists(address_list, is_v6=False):
     curr_file = SAVE_LISTS_LOCATION
     if is_v6:
         curr_file = SAVE_LISTS_LOCATION_V6
     with open(curr_file, "r") as f:
-        addresses = [ujson.loads(line) for line in f.readlines()]
+        addresses = [json.loads(line) for line in f.readlines()]
     for row in addresses:
         cmnt = row.get("comment")
         if cmnt is None:
