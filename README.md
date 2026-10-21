@@ -37,7 +37,7 @@ For a comprehensive step-by-step installation guide with detailed explanations, 
 
 The installation process is now fully interactive!
 
-1. Set up a fresh Debian 12 installation on a dedicated machine (server or VM).
+1. Set up a fresh Debian 12 or 13 installation on a dedicated machine (server or VM).
 2. Log in as root.
 3. Install Git: `apt install git`.
 4. Clone this repository: `git clone https://github.com/angolo40/mikrocata2selks.git`.
@@ -47,7 +47,7 @@ The installation process is now fully interactive!
     - **Install Clear NDR**: The installer will set up Clear NDR with support for one Mikrotik device.
     - **Configure**: The script will prompt you for necessary information, like the installation path.
     - **Wait...**: The script will handle the rest.
-8. Once finished, edit the configuration file (e.g., `/usr/local/bin/mikrocataTZSP0.py`) with your Mikrotik and Telegram parameters, then reload the service (e.g., `systemctl restart mikrocataTZSP0.service`).
+8. Once finished, edit the configuration file `/etc/mikrocata/tzsp0.env` with your Mikrotik and Telegram parameters, then restart the service: `systemctl restart mikrocata@tzsp0.service`.
 9. Configure your Mikrotik devices as described below.
 
 ## 📡 Mikrotik Setup
@@ -75,11 +75,10 @@ The installation process is now fully interactive!
     /ip/service/set api address=[DEBIANIP]
     ```
    
-   Then configure the corresponding settings in mikrocata.py:
-   ```python
-   USE_SSL = True  # Set to False for non-SSL connection
-   PORT = 8728    # Default port for non-SSL. Will use 8729 if USE_SSL is True
-   ALLOW_SELF_SIGNED_CERTS = False  # Set to True only if using self-signed certificates
+   Then configure the corresponding settings in `/etc/mikrocata/tzsp0.env`:
+   ```sh
+   USE_SSL=true                   # API port 8729 with SSL, 8728 without
+   ALLOW_SELF_SIGNED_CERTS=false  # Set to true only if using self-signed certificates
    ```
 4. Add Mikrocata user in Mikrotik:
     ```sh
@@ -88,48 +87,56 @@ The installation process is now fully interactive!
 
 ## ⚙️ Mikrocata Configuration
 
-After installation, you need to configure the Mikrocata script with your specific settings. Edit the configuration file:
+The configuration lives in `/etc/mikrocata/tzsp0.env`, separate from the code. Updates never overwrite it.
+All options are documented in [`mikrocata.env.example`](mikrocata.env.example).
 
 ```bash
-nano /usr/local/bin/mikrocataTZSP0.py
+nano /etc/mikrocata/tzsp0.env
 ```
 
 ### Essential Settings
 
 1. **Mikrotik Connection:**
-   ```python
-   USERNAME = "mikrocata2selks"  # Mikrotik username
-   PASSWORD = "password"          # Mikrotik password
-   ROUTER_IP = "192.168.0.1"     # Mikrotik IP address
+   ```sh
+   ROUTER_IP="192.168.0.1"
+   USERNAME="mikrocata2selks"
+   PASSWORD="password"
    ```
+   The service refuses to start until these are set.
 
 2. **Telegram Notifications (optional):**
-   ```python
-   enable_telegram = True
-   TELEGRAM_TOKEN = "your_bot_token"
-   TELEGRAM_CHATID = "your_chat_id"
+   ```sh
+   ENABLE_TELEGRAM=true
+   TELEGRAM_TOKEN="your_bot_token"
+   TELEGRAM_CHATID="your_chat_id"
    ```
 
 3. **Timezone Configuration:**
-   ```python
-   # Set your timezone offset in hours from UTC
-   TIMEZONE_OFFSET = 3  # Example: 3 for UTC+3 (Moscow), -5 for UTC-5 (EST), 0 for UTC
+   ```sh
+   # Offset in hours from UTC
+   TIMEZONE_OFFSET=1
    ```
-
    This setting ensures that timestamps in Telegram notifications and MikroTik comments display in your local timezone instead of UTC.
+   Examples: `0` UTC, `1` CET, `3` MSK, `-5` EST, `-8` PST, `8` CST.
 
-   **Common timezones:**
-   - `0` - UTC
-   - `1` - CET (Central European Time)
-   - `3` - MSK (Moscow Standard Time)
-   - `-5` - EST (Eastern Standard Time)
-   - `-8` - PST (Pacific Standard Time)
-   - `8` - CST (China Standard Time)
+Quote values containing spaces or special characters with `"..."` and escape the characters `` \ " $ ` `` inside them with a backslash.
 
 After editing the configuration, restart the service:
 ```bash
-systemctl restart mikrocataTZSP0.service
+systemctl restart mikrocata@tzsp0.service
 ```
+
+## ⬆️ Update
+
+```bash
+cd mikrocata2selks
+git pull
+./easyinstall.sh update
+```
+
+The update installs the new code and systemd units and restarts the services. Your configuration in `/etc/mikrocata` and the saved address lists in `/var/lib/mikrocata` are kept.
+
+**Upgrading from v4.x:** `update` migrates your settings from `/usr/local/bin/mikrocataTZSP0.py` into `/etc/mikrocata/tzsp0.env` and replaces the old `mikrocataTZSP0` / `TZSPreplay37008@tzsp0` services with `mikrocata@tzsp0` / `tzsp-replay@tzsp0`. Review the generated file afterwards.
 
 ## 🛠️ Handling Multiple Mikrotik Devices
 
@@ -139,7 +146,8 @@ systemctl restart mikrocataTZSP0.service
 
 For reference, a multi-device setup would involve:
 - Creating additional dummy interfaces (`tzsp1`, `tzsp2`, etc.) on different ports (`37009`, `37010`, etc.)
-- Creating corresponding Mikrocata service instances (`mikrocataTZSP1.py`, `mikrocataTZSP2.py`, etc.)
+- Creating a configuration per device (`/etc/mikrocata/tzsp1.env`, ...) with its own `TZSP_PORT`
+- Enabling the service instances (`mikrocata@tzsp1`, `tzsp-replay@tzsp1`, ...)
 - Configuring each Mikrotik device to send traffic to its dedicated port
 
 If you need to manage multiple Mikrotik devices, please wait for the official documentation or contact the maintainer for assistance.
@@ -160,9 +168,9 @@ flowchart TD
         end
 
         subgraph Mikrocata_Services
-            S0[mikrocataTZSP0.py]
-            S1[mikrocataTZSP1.py]
-            S2[mikrocataTZSP2.py]
+            S0[mikrocata@tzsp0]
+            S1[mikrocata@tzsp1]
+            S2[mikrocata@tzsp2]
         end
 
         subgraph Analysis
@@ -193,12 +201,13 @@ flowchart TD
 ## 💡 Features
 
 - Installs Docker and Docker Compose.
-- Installs Python.
+- Installs Python dependencies from the Debian repositories.
 - Installs **Clear NDR**: The next-generation open-source NDR platform.
   - **Note**: SELKS is no longer supported due to repository removal by Stamus Networks.
 - Downloads and installs Mikrocata.
 - Installs TZSP interface for packet capture.
 - Enables notifications over Telegram when an IP is blocked.
+- Updates in place without touching your configuration.
 - Includes a complete uninstallation option.
 
 ## 🔄 Changelog
@@ -213,8 +222,8 @@ flowchart TD
     ```
 - Check if mikrocata service and tzsp0 interface are up and running:
     ```sh
-    systemctl status mikrocataTZSP0.service
-    systemctl status TZSPreplay37008@tzsp0.service
+    systemctl status mikrocata@tzsp0.service
+    systemctl status tzsp-replay@tzsp0.service
     ```
 - Check if Suricata Docker container is up and running:
     ```sh
